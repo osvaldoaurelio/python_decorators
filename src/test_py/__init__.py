@@ -5,56 +5,63 @@
 # o parametro func representa a função original que está sendo decorada.
 # *args permite que a função aceite um número variável de argumentos posicionais, 
 # enquanto **kwargs permite que a função aceite um número variável de argumentos nomeados (chave-valor).
-# @functools.wraps(func) é um decorator que preserva as informações da função original, como nome, docstring e outros atributos,
+# @wraps(func) é um decorator que preserva as informações da função original, como nome, docstring e outros atributos,
 # garantindo que a função decorada se comporte de maneira semelhante à função original.
 # wrapper é a função interna que envolve a função original, adicionando funcionalidades adicionais antes ou depois da execução da função original.
 
-import functools
+from atexit import register
+from functools import wraps
+from typing import Callable, TypedDict
 
-def authentication_required(func):
-    @functools.wraps(func)
-    def wrapper(*args, **kwargs):
-        print(f"\nAutenticando usuário...")
+register(lambda : print(f"\n{'='*50}\n\t...é só isso\n\t...não tem mais jeito\n\t...acabou\n\t...boa sorte 🎶\n{'='*50}"))
 
-        if not kwargs.get("logado", False) and not args[0].get("logado", False):
-            raise PermissionError("Usuário não autenticado.")
+class UserType(TypedDict):
+    name: str
+    is_logged: bool
+
+def authentication_required[**P, R](func: Callable[P, R]) -> Callable[P, R]:
+    @wraps(func)
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+        print(f"\n🔓 Autenticando usuário...")
+        if isinstance(args[0], dict) and not args[0].get("is_logged", False):
+            raise PermissionError("🔒 Usuário não autenticado.")
         
         return func(*args, **kwargs)
 
     return wrapper
 
-def rate_limit(max_calls = 3):
-    def decorator(func):
-        calls = 0
-
+def rate_limit(max_calls: int = 3):
+    def decorator[**P, R](func: Callable[P, R]) -> Callable[P, R]:
+        calls: int = 0
         
-        def __reset_limite():
+        def _reset_limite() -> None:
             nonlocal calls
             calls = 0
-            print("-> Limite de chamadas redefinido para zero.")
+            print("🆕 Limite de chamadas redefinido para zero.")
 
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs):
+        @wraps(func)
+        def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
             nonlocal calls
             if calls >= max_calls:
-                raise PermissionError("Limite de chamadas excedido.")
+                raise PermissionError("💥 Limite de chamadas excedido.")
             
             calls += 1
-            print(f"Chamada atual: {calls}: Limite de chamadas: {max_calls}")
+            print(f"🔄️ Chamada atual: {calls}: Limite de chamadas: {max_calls}")
 
             return func(*args, **kwargs)
         
-        wrapper.reset_limite = __reset_limite
+        wrapper.__setattr__("reset_limite", _reset_limite)
 
         return wrapper
 
     return decorator
 
 def transaction_log(canal: str):
-    def decorator(func):
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs):
-            print(f"[LOG - {canal}]: Usuário {args[0]['nome']} iniciou uma transação.")
+    def decorator[**P, R](func: Callable[P, R]) -> Callable[P, R]:
+        @wraps(func)
+        def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+            user_name = args[0]['name'] if isinstance(args[0], dict) else 'unknown'
+            print(f"🖨️  [LOG - {canal}]: {user_name} iniciou uma transação.")
 
             return func(*args, **kwargs)
         
@@ -62,20 +69,21 @@ def transaction_log(canal: str):
 
     return decorator
 
-usuario_logado = {"nome": "João", "logado": True}
-usuario_nao_logado = {"nome": "Maria", "logado": False}
-
 @authentication_required
 @rate_limit()
 @transaction_log(canal="Internet Banking")
-def send_money(usuario: dict, valor: float, destino: str) -> None:
-    print(f"Transferindo R${valor} para {destino}...\n")
+def send_money(usuario: UserType, valor: float, destino: str) -> None:
+    print(f"✅ {usuario['name']} transferindo R${valor} para {destino}...\n")
 
 def main() -> None:
+    usuario_logado: UserType = {"name": "João", "is_logged": True}
+    usuario_nao_logado: UserType = {"name": "Maria", "is_logged": False}
+
     try:
         send_money(usuario_logado, valor=100.0, destino="Maria")
-        send_money(usuario_logado, valor=150.0, destino="Carlos")
-        send_money(usuario_logado, valor=50.0, destino="Pedro")
+        send_money({**usuario_logado, "name": "Malu"}, valor=150.0, destino="Carlos")
+        send_money({**usuario_logado, "name": "Victor"}, valor=50.0, destino="Pedro")
+        # send_money(usuario_logado, valor=50.0, destino="Maria")
         send_money.reset_limite()
         send_money(usuario_logado, valor=50.0, destino="Pedro")
         send_money(usuario_nao_logado, valor=200.0, destino="Carlos")
